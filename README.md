@@ -1,28 +1,45 @@
-# Create T3 App
+# Rate Limiter Upstash Redis
 
 This is a [T3 Stack](https://create.t3.gg/) project bootstrapped with `create-t3-app`.
 
-## What's next? How do I make an app with this?
+## Limiter [limiter.ts](src/pages/api/limiter.ts)
 
-We try to keep this project as simple as possible, so you can start with just the scaffolding we set up for you, and add additional things later when they become necessary.
+Configure the limiter within limiter.ts
 
-If you are not familiar with the different technologies used in this project, please refer to the respective docs. If you still are in the wind, please join our [Discord](https://t3.gg/discord) and ask for help.
+```js
+import { type NextApiRequest, type NextApiResponse } from "next";
+import { Ratelimit } from "@upstash/ratelimit"; // for deno: see above
+import { redis } from "~/lib/upstash/upstash-client";
+import { Redis } from "@upstash/redis";
 
-- [Next.js](https://nextjs.org)
-- [NextAuth.js](https://next-auth.js.org)
-- [Prisma](https://prisma.io)
-- [Tailwind CSS](https://tailwindcss.com)
-- [tRPC](https://trpc.io)
+const handler = async (req: NextApiRequest, res: NextApiResponse) => {
+  const ratelimit = new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(100, "30 d"),
+    analytics: true,
+    /**
+     * Optional prefix for the keys used in redis. This is useful if you want to share a redis
+     * instance with other applications and want to avoid key collisions. The default prefix is
+     * "@upstash/ratelimit"
+     */
+    prefix: "@upstash/ratelimit",
+  });
 
-## Learn More
+  // Use a constant string to limit all requests with a single ratelimit
+  // Or use a userID, apiKey or ip address for individual limits.
+  const identifier = "limiter-test";
+  const { success, limit, remaining } = await ratelimit.limit(identifier);
 
-To learn more about the [T3 Stack](https://create.t3.gg/), take a look at the following resources:
+  if (!success) {
+    res.status(429).json({
+      message: `Unable to process at this time`,
+      remaining,
+      limit,
+    });
+  }
 
-- [Documentation](https://create.t3.gg/)
-- [Learn the T3 Stack](https://create.t3.gg/en/faq#what-learning-resources-are-currently-available) — Check out these awesome tutorials
+  res.status(200).json({ message: "All good!", remaining, limit });
+};
 
-You can check out the [create-t3-app GitHub repository](https://github.com/t3-oss/create-t3-app) — your feedback and contributions are welcome!
-
-## How do I deploy this?
-
-Follow our deployment guides for [Vercel](https://create.t3.gg/en/deployment/vercel), [Netlify](https://create.t3.gg/en/deployment/netlify) and [Docker](https://create.t3.gg/en/deployment/docker) for more information.
+export default handler;
+```
